@@ -13,5 +13,5 @@ func main() {
 	user.RegisterRoutes(router)
 
 	log.Println("started...")
-	log.Panicln(http.ListenAndServe("127.0.0.1:8000", router))
+	log.Panicln(http.ListenAndServe("127.0.0.1:3000", router))
 }

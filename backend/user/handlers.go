@@ -1,24 +1,29 @@
 package user
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/auto-app/backend/models"
 	"github.com/auto-app/backend/utils"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 	"gopkg.in/mgo.v2/bson"
-	"log"
+	"html/template"
 	"net/http"
+	"sort"
 
-	"golang.org/x/oauth2"
+	"github.com/markbates/goth"
+	"github.com/markbates/goth/gothic"
+	"github.com/markbates/goth/providers/twitter"
 )
 
 const (
-	getUser    = "/user/{address}"
-	setUser    = "/user"
-	addTwitter = "/user/addTwitter"
+	getUser     = "/user/{address}"
+	setUser     = "/user"
+	addTwitter  = "/addTwitter"
+	callBackURL = "/twitter/callback"
+	authTwitter = "/twitter"
 )
 
 type user struct {
@@ -86,31 +91,72 @@ func setUserHandler() http.HandlerFunc {
 
 func addTwitterHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.Background()
-		conf := &oauth2.Config{
-			ClientID:     "1214434556872232962-cG4ZeDmY9koeOQpc6q2nAbJIcJLt5j",
-			ClientSecret: "nPQ6TdR9ZeoWpXWSGivoYGuByL3FP5bMgj5LtSxCz6CzU",
-			Scopes:       []string{},
-			Endpoint: oauth2.Endpoint{
-				AuthURL:  "https://api.twitter.com/oauth2/auth",
-				TokenURL: "https://api.twitter.com/oauth2/token",
-			},
+		type ProviderIndex struct {
+			Providers    []string
+			ProvidersMap map[string]string
 		}
 
+		goth.UseProviders(
+			twitter.New("", "",
+				"https://www.theidentityhub.com/autonomy/authenticate/processaccountproviderresponse"),
+			// If you'd like to use authenticate instead of authorize in Twitter provider, use this instead.
+			// twitter.NewAuthenticate(os.Getenv("TWITTER_KEY"), os.Getenv("TWITTER_SECRET"), "http://localhost:3000/auth/twitter/callback"),
+		)
 
-		url := conf.AuthCodeURL("state", oauth2.AccessTypeOffline)
-		fmt.Printf("Visit the URL for the auth dialog: %v", url)
+		m := make(map[string]string)
+		m["twitter"] = "Twitter"
 
-		var code string
-		if _, err := fmt.Scan(&code); err != nil {
-			log.Fatal(err)
+		var keys []string
+		for k := range m {
+			keys = append(keys, k)
 		}
-		tok, err := conf.Exchange(ctx, code)
+		sort.Strings(keys)
+
+		providerIndex := &ProviderIndex{
+			Providers:    keys,
+			ProvidersMap: m,
+		}
+
+		t, _ := template.ParseFiles("templates/index.html")
+		t.Execute(w, providerIndex)
+	}
+}
+
+func authTwitterHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		goth.UseProviders(
+			twitter.New("", "",
+				"https://www.theidentityhub.com/autonomy/authenticate/processaccountproviderresponse"),
+			// If you'd like to use authenticate instead of authorize in Twitter provider, use this instead.
+			// twitter.NewAuthenticate(os.Getenv("TWITTER_KEY"), os.Getenv("TWITTER_SECRET"), "http://localhost:3000/auth/twitter/callback"),
+		)
+
+		fmt.Println("prov", r.URL.Query().Get("provider"))
+
+		gothic.Store = sessions.NewCookieStore([]byte(""))
+	
+
+		if gothUser, err := gothic.CompleteUserAuth(w, r); err == nil {
+			t, _ := template.ParseFiles("templates/success.html")
+			t.Execute(w, gothUser)
+		} else {
+			fmt.Println("step4")
+			gothic.BeginAuthHandler(w, r)
+		}
+	}
+}
+
+func callBackURLHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Query().Add("provider", "twitter")
+
+		user, err := gothic.CompleteUserAuth(w, r)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Fprintln(w, err)
+			return
 		}
+		t, _ := template.ParseFiles("templates/success.html")
+		t.Execute(w, user)
 
-		client := conf.Client(ctx, tok)
-		client.Get("...")
 	}
 }
