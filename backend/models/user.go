@@ -32,6 +32,7 @@ func init() {
 type User struct {
 	Address string `json:"address" bson:"address"`
 	Handle  string `json:"handle" bson:"handle"`
+	Status  string `json:"status" bson:"status"`
 }
 
 func (u User) NewUser(address, handler string) User {
